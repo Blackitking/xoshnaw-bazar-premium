@@ -94,6 +94,19 @@ footer{background:#111827;color:white;text-align:center;padding:30px 15px;margin
 header{flex-direction:column}
 .hero h1{font-size:30px}
 }
+
+.ai-content-wrap{margin-top:25px}
+.ai-admin-tools{background:#f8fafc;border:2px dashed #2563eb;border-radius:18px;padding:20px;margin-bottom:22px}
+.ai-admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ai-content-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.ai-content-card{background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 8px 28px #00000012;border:1px solid #e5e7eb}
+.ai-content-card .content-body{padding:16px}
+.ai-content-card h3{margin-bottom:8px}
+.ai-content-card p{color:#667085;line-height:1.8;white-space:pre-wrap}
+.ai-content-media{width:100%;display:block;max-height:420px;object-fit:cover;background:#111}
+.ai-content-empty{padding:22px;text-align:center;background:#f8fafc;border-radius:16px;color:#667085}
+.content-delete{margin-top:12px;background:#dc2626;color:#fff;padding:10px 14px;border-radius:10px;font-weight:700}
+@media(max-width:700px){.ai-admin-grid,.ai-content-grid{grid-template-columns:1fr}}
 </style>
 </head>
 
@@ -192,30 +205,7 @@ header{flex-direction:column}
 <p>بەخێربێیت بۆ بەشی تایبەتی ئەندامانی Premium.</p>
 </div>
 
-<div class="premium-grid">
-
-<div class="premium-card">
-<div class="premium-icon">🤖</div>
-<h3>AI Tools Pro</h3>
-<p>ئامرازە تایبەتەکانی AI و ڕێنمایی بەکارهێنانیان.</p>
-<a class="premium-link" href="#" onclick="return false">کردنەوە</a>
-</div>
-
-<div class="premium-card">
-<div class="premium-icon">🎬</div>
-<h3>ڤیدیۆی Premium</h3>
-<p>ڤیدیۆی فێرکاری تایبەت بۆ ئەندامانی Premium.</p>
-<a class="premium-link" href="#" onclick="return false">بینین</a>
-</div>
-
-<div class="premium-card">
-<div class="premium-icon">🔥</div>
-<h3>ناوەڕۆکی نوێ</h3>
-<p>ناوەڕۆکی نوێی تایبەت کە بۆ Premium زیاد دەکرێت.</p>
-<a class="premium-link" href="#" onclick="return false">بینین</a>
-</div>
-
-</div>
+<div id="aiContentArea" class="ai-content-wrap"></div>
 
 <div class="premium-expiry" id="premiumExpiry"></div>
 
@@ -233,6 +223,19 @@ header{flex-direction:column}
 <div class="admin-title">👑 ADMIN PANEL</div>
 <p>بەخێربێیت بەڕێوەبەر ❤️</p>
 <br>
+<div class="ai-admin-tools">
+<h3 style="margin-bottom:10px">🤖 بەڕێوەبردنی ناوەڕۆکی AI</h3>
+<p style="line-height:1.8;margin-bottom:14px">تەنها ئەدمین دەتوانێت ڤیدیۆ، وێنە یان دەق زیاد بکات. بەشێک کە بەتاڵە لای ئەندام نیشان نادرێت.</p>
+<div class="ai-admin-grid">
+<div class="form-group"><label>ناونیشانی بەش</label><input id="contentTitle" type="text" placeholder="بۆ نموونە: ڤیدیۆی فێرکاری ١"></div>
+<div class="form-group"><label>جۆری ناوەڕۆک</label><select id="contentType" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px"><option value="video">🎬 ڤیدیۆ</option><option value="image">🖼️ وێنە</option><option value="text">📝 دەق</option></select></div>
+</div>
+<div class="form-group"><label>دەق / کورتە باس</label><textarea id="contentDescription" placeholder="کورتەی ناوەڕۆک..."></textarea></div>
+<div class="form-group"><label>فایل (بۆ ڤیدیۆ یان وێنە)</label><input id="contentFile" type="file" accept="video/*,image/*"></div>
+<button class="submit-btn" onclick="addAIContent()">➕ زیادکردنی ناوەڕۆک</button>
+<div id="contentAdminMessage" class="error-box" style="margin-top:10px"></div>
+</div>
+<div id="adminContentList" style="margin-bottom:20px"></div>
 <div id="adminRequests">داواکارییەکان لێرە دەردەکەون.</div>
 </div>
 
@@ -516,6 +519,8 @@ locked.style.display="block";
 }
 }
 
+loadAIContent();
+
 function showError(id,message){
   const el=document.getElementById(id);
   if(!el)return;
@@ -676,6 +681,74 @@ alert("❌ هەڵەیەک ڕوویدا:\n\n"+(error.message||error));
 }
 }
 
+async function loadAIContent(){
+  const area=document.getElementById("aiContentArea");
+  if(!area||!supabaseClient)return;
+  const {data,error}=await supabaseClient.from("ai_content").select("*").eq("published",true).order("created_at",{ascending:false});
+  if(error){console.error("AI CONTENT ERROR",error);area.innerHTML="";return;}
+  if(!data||data.length===0){area.innerHTML="";return;}
+  area.innerHTML='<div class="ai-content-grid">'+data.map(item=>renderAIContentCard(item,false)).join('')+'</div>';
+}
+
+function renderAIContentCard(item,admin){
+  let media="";
+  if(item.type==="video"&&item.file_url) media='<video class="ai-content-media" controls preload="metadata" src="'+escapeHTML(item.file_url)+'"></video>';
+  if(item.type==="image"&&item.file_url) media='<img class="ai-content-media" loading="lazy" src="'+escapeHTML(item.file_url)+'" alt="'+escapeHTML(item.title||"")+'">';
+  let del=admin ? `<button class="content-delete" onclick="deleteAIContent('${escapeHTML(item.id)}')">🗑️ سڕینەوە</button>` : "";
+  return '<article class="ai-content-card">'+media+'<div class="content-body"><h3>'+escapeHTML(item.title||"ناونیشان")+'</h3><p>'+escapeHTML(item.description||"")+'</p>'+del+'</div></article>';
+}
+
+async function loadAdminAIContent(){
+  if(!isAdmin())return;
+  const box=document.getElementById("adminContentList");
+  if(!box)return;
+  const {data,error}=await supabaseClient.from("ai_content").select("*").order("created_at",{ascending:false});
+  if(error){box.innerHTML='<div class="error-box">❌ '+escapeHTML(error.message)+'</div>';return;}
+  if(!data||data.length===0){box.innerHTML='<div class="ai-content-empty">📭 هێشتا هیچ ناوەڕۆکێک زیاد نەکراوە.</div>';return;}
+  box.innerHTML='<h4 style="margin:15px 0">📚 ناوەڕۆکە زیادکراوەکان</h4>'+data.map(x=>renderAIContentCard(x,true)).join('');
+}
+
+async function addAIContent(){
+  if(!isAdmin()){alert("❌ تەنها ئەدمین دەتوانێت ناوەڕۆک زیاد بکات.");return;}
+  const title=document.getElementById("contentTitle").value.trim();
+  const type=document.getElementById("contentType").value;
+  const description=document.getElementById("contentDescription").value.trim();
+  const fileInput=document.getElementById("contentFile");
+  const msg=document.getElementById("contentAdminMessage");
+  showError("contentAdminMessage","");
+  if(!title){showError("contentAdminMessage","❌ تکایە ناونیشان بنووسە.");return;}
+  let fileUrl=null;
+  if(type!=="text"){
+    const file=fileInput.files[0];
+    if(!file){showError("contentAdminMessage","❌ تکایە فایل هەڵبژێرە.");return;}
+    const max=type==="video"?100*1024*1024:10*1024*1024;
+    if(file.size>max){showError("contentAdminMessage",type==="video"?"❌ ڤیدیۆ نابێت لە 100MB زیاتر بێت.":"❌ وێنە نابێت لە 10MB زیاتر بێت.");return;}
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+    const path=Date.now()+"_"+Math.random().toString(36).slice(2)+"_"+safeName;
+    const {error:upErr}=await supabaseClient.storage.from("ai-content").upload(path,file,{upsert:false,contentType:file.type});
+    if(upErr){showError("contentAdminMessage","❌ Upload سەرکەوتوو نەبوو: "+upErr.message);return;}
+    const {data:urlData}=supabaseClient.storage.from("ai-content").getPublicUrl(path);
+    fileUrl=urlData.publicUrl;
+  }
+  const {error}=await supabaseClient.from("ai_content").insert({title,description,type,file_url:fileUrl,storage_path:fileUrl?fileUrl.split("/ai-content/")[1]||null:null,published:true,created_by:currentUser.id});
+  if(error){showError("contentAdminMessage","❌ تۆمارکردن سەرکەوتوو نەبوو: "+error.message);return;}
+  document.getElementById("contentTitle").value="";document.getElementById("contentDescription").value="";document.getElementById("contentFile").value="";
+  showError("contentAdminMessage","");
+  alert("✅ ناوەڕۆکەکە زیاد کرا.");
+  await loadAdminAIContent();
+  await loadAIContent();
+}
+
+async function deleteAIContent(id){
+  if(!isAdmin())return;
+  if(!confirm("دڵنیایت لە سڕینەوەی ئەم ناوەڕۆکە؟"))return;
+  const {data:item}=await supabaseClient.from("ai_content").select("storage_path").eq("id",id).maybeSingle();
+  if(item?.storage_path){await supabaseClient.storage.from("ai-content").remove([item.storage_path]);}
+  const {error}=await supabaseClient.from("ai_content").delete().eq("id",id);
+  if(error){alert("❌ سڕینەوە سەرکەوتوو نەبوو: "+error.message);return;}
+  await loadAdminAIContent();await loadAIContent();
+}
+
 async function showDashboard(){
 if(!currentUser)return;
 
@@ -695,6 +768,7 @@ const adminBox=document.getElementById("adminBox");
 if(isAdmin()){
 if(adminBox)adminBox.style.display="block";
 await loadAdminRequests();
+await loadAdminAIContent();
 }else{
 if(adminBox)adminBox.style.display="none";
 }
