@@ -270,6 +270,30 @@ header{flex-direction:column}
 <div class="form-group"><label>وشەی نهێنی</label><input id="loginPassword" type="password"></div>
 
 <button class="submit-btn" onclick="loginUser()">🔐 Login</button>
+<button type="button" onclick="openForgotPassword()" style="background:none;color:#2563eb;font-weight:bold;margin-top:12px;width:100%;">🔑 پاسۆڕدت لەبیر چووە؟</button>
+</div>
+</div>
+
+<!-- FORGOT PASSWORD -->
+<div id="forgotPasswordModal" class="modal">
+<div class="modal-box">
+<button class="close" onclick="closeAll()">×</button>
+<h2 class="modal-title">🔐 ڕیسێتی پاسۆڕد</h2>
+<p style="line-height:1.9;margin-bottom:18px;text-align:center;">ئیمەیڵەکەت بنووسە تا لینکێکی گۆڕینی پاسۆڕد بۆت بنێردرێت.</p>
+<div class="form-group"><label>ئیمەیڵ</label><input id="forgotEmail" type="email" autocomplete="email"></div>
+<div id="forgotError" class="error-box"></div>
+<button class="submit-btn" onclick="sendResetPassword()">📩 ناردنی لینک</button>
+</div>
+</div>
+
+<!-- RESET PASSWORD -->
+<div id="resetPasswordModal" class="modal">
+<div class="modal-box">
+<h2 class="modal-title">🔑 دانانی پاسۆڕدی نوێ</h2>
+<div class="form-group"><label>پاسۆڕدی نوێ</label><input id="newPassword" type="password" autocomplete="new-password"></div>
+<div class="form-group"><label>دووبارە پاسۆڕد</label><input id="newPassword2" type="password" autocomplete="new-password"></div>
+<div id="resetError" class="error-box"></div>
+<button class="submit-btn" onclick="updatePassword()">✅ گۆڕینی پاسۆڕد</button>
 </div>
 </div>
 
@@ -377,9 +401,13 @@ function closeAll(){
 const login=document.getElementById("loginModal");
 const register=document.getElementById("registerModal");
 const payment=document.getElementById("paymentModal");
+const forgot=document.getElementById("forgotPasswordModal");
+const reset=document.getElementById("resetPasswordModal");
 if(login)login.style.display="none";
 if(register)register.style.display="none";
 if(payment)payment.style.display="none";
+if(forgot)forgot.style.display="none";
+if(reset)reset.style.display="none";
 }
 
 function closePayment(){
@@ -546,7 +574,7 @@ async function registerUser(){
       if(msg.toLowerCase().includes("rate limit")){
         msg="❌ Supabase Rate Limit ـەکە پڕ بووە. تکایە هەندێک کات چاوەڕێ بکە و دووبارە هەوڵ مەدە زۆر بە زوویی.";
       }else if(msg.toLowerCase().includes("already registered")||msg.toLowerCase().includes("already exists")){
-        msg="❌ ئەم ئیمەیڵە پێشتر تۆمارکراوە. تکایە Login بکە.";
+        msg="⚠️ ببورە، پێشتر ئەژمار لەسەر ئەم ئیمەیڵە دروست کراوە! تکایە Login بکە یان پاسۆڕدت ڕیسێت بکە.";
       }
       showError("registerError",msg);
       return;
@@ -581,6 +609,43 @@ async function registerUser(){
   }finally{
     if(btn){btn.disabled=false;btn.textContent="📝 تۆمارکردن";}
   }
+}
+
+function openForgotPassword(){
+const loginEmail=document.getElementById("loginEmail")?.value.trim()||"";
+closeAll();
+const input=document.getElementById("forgotEmail");
+if(input)input.value=loginEmail;
+showError("forgotError","");
+const modal=document.getElementById("forgotPasswordModal");
+if(modal)modal.style.display="flex";
+}
+
+async function sendResetPassword(){
+showError("forgotError","");
+if(!supabaseClient){showError("forgotError","❌ Supabase ئامادە نییە.");return;}
+const email=document.getElementById("forgotEmail")?.value.trim().toLowerCase()||"";
+if(!email){showError("forgotError","❌ تکایە ئیمەیڵەکەت بنووسە.");return;}
+try{
+const {error}=await supabaseClient.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+if(error){showError("forgotError","❌ ناردنی لینک سەرکەوتوو نەبوو: "+error.message);return;}
+showError("forgotError","✅ ئەگەر ئەم ئیمەیڵە ئەکاونتی هەبێت، لینکێکی ڕیسێت بۆی نێردراوە. Inbox و Spam ـەکەت بپشکنە.");
+}catch(error){showError("forgotError","❌ هەڵەیەک ڕوویدا: "+(error.message||error));}
+}
+
+async function updatePassword(){
+showError("resetError","");
+const password=document.getElementById("newPassword")?.value||"";
+const password2=document.getElementById("newPassword2")?.value||"";
+if(password.length<6){showError("resetError","❌ پاسۆڕد دەبێت لانیکەم 6 پیت بێت.");return;}
+if(password!==password2){showError("resetError","❌ دوو پاسۆڕدەکە یەکسان نین.");return;}
+try{
+const {error}=await supabaseClient.auth.updateUser({password:password});
+if(error){showError("resetError","❌ گۆڕینی پاسۆڕد سەرکەوتوو نەبوو: "+error.message);return;}
+alert("✅ پاسۆڕدەکەت بە سەرکەوتوویی گۆڕدرا.");
+closeAll();
+openLogin();
+}catch(error){showError("resetError","❌ هەڵەیەک ڕوویدا: "+(error.message||error));}
 }
 
 async function loginUser(){
@@ -699,7 +764,10 @@ if(item.status==="accepted")statusText="✅ پەسەندکراو";
 if(item.status==="rejected")statusText="❌ ڕەتکراوە";
 
 html+="<div class='admin-request'>"+
-"<strong>👤 User ID:</strong><br>"+escapeHTML(item.user_id)+"<br><br>"+
+"<strong>👤 ناو:</strong> "+escapeHTML(item.full_name||"")+"<br>"+
+"<strong>📧 ئیمەیڵ:</strong> "+escapeHTML(item.email||"")+"<br>"+
+"<strong>📱 مۆبایل:</strong> "+escapeHTML(item.phone||"")+"<br>"+
+"<strong>🆔 User ID:</strong><br>"+escapeHTML(item.user_id)+"<br><br>"+
 "<strong>👑 پلان:</strong> "+escapeHTML(item.plan||"")+"<br>"+
 "<strong>💰 بڕ:</strong> "+escapeHTML(item.amount||"")+" د.ع<br>"+
 "<strong>📅 کات:</strong> "+escapeHTML(created)+"<br>"+
@@ -942,6 +1010,9 @@ const {error}=await supabaseClient
 .from("payment_requests")
 .insert({
 user_id:currentUser.id,
+full_name:name,
+email:currentUser.email||"",
+phone:phone,
 plan:selectedPlan,
 amount:selectedPrice,
 receipt_url:receiptUrl,
@@ -1040,6 +1111,16 @@ function setupAuthListener(){
 if(!supabaseClient)return;
 
 supabaseClient.auth.onAuthStateChange((event,session)=>{
+if(event === "PASSWORD_RECOVERY"){
+currentUser=session?.user||currentUser;
+updateHeader();
+setTimeout(()=>{
+closeAll();
+const modal=document.getElementById("resetPasswordModal");
+if(modal)modal.style.display="flex";
+},100);
+return;
+}
 if(session?.user){
 currentUser=session.user;
 updateHeader();
