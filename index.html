@@ -693,6 +693,24 @@ function categoryLabel(cat){
   return cat==="AI TOOL"?"🤖 AI TOOL":cat==="APPS MODS AND HACK"?"📱 APPS MODS AND HACK":"🎬 FILM AND DRAMA";
 }
 
+async function signAIContentUrls(items,expiresIn=3600){
+  const list=Array.isArray(items)?items:[];
+  await Promise.all(list.map(async item=>{
+    item.signed_url=null;
+    if((item.type==="video"||item.type==="image")&&item.storage_path){
+      const {data,error}=await supabaseClient.storage.from("ai-content").createSignedUrl(item.storage_path,expiresIn);
+      if(error){
+        console.error("SIGNED URL ERROR:",item.title,error);
+        item.signed_url=null;
+        item.signed_url_error=error.message||String(error);
+        return;
+      }
+      item.signed_url=data?.signedUrl||null;
+    }
+  }));
+  return list;
+}
+
 async function loadAIContent(){
   const area=document.getElementById("aiContentArea");
   if(!area||!supabaseClient)return;
@@ -703,6 +721,7 @@ async function loadAIContent(){
   }
   const {data,error}=await supabaseClient.from("ai_content").select("*").eq("published",true).order("created_at",{ascending:false});
   if(error){console.error(error);area.innerHTML="";return;}
+  await signAIContentUrls(data||[],86400);
   const groups={"AI TOOL":[],"APPS MODS AND HACK":[],"FILM AND DRAMA":[]};
   (data||[]).forEach(item=>{if(groups[item.category])groups[item.category].push(item);});
   let html="";
@@ -713,10 +732,25 @@ async function loadAIContent(){
   area.innerHTML=html;
 }
 
+async function refreshAIVideoUrl(videoEl,storagePath){
+  if(!videoEl||!storagePath||videoEl.dataset.retried==="1")return;
+  videoEl.dataset.retried="1";
+  try{
+    const {data,error}=await supabaseClient.storage.from("ai-content").createSignedUrl(storagePath,86400);
+    if(error||!data?.signedUrl)throw error||new Error("Signed URL نەدروستکرا");
+    videoEl.src=data.signedUrl;
+    videoEl.load();
+  }catch(e){
+    console.error("VIDEO OPEN ERROR:",e);
+    videoEl.insertAdjacentHTML("afterend",'<div class="error-box" style="margin-top:8px">❌ ڤیدیۆکە نەکرایەوە. تکایە پەڕەکە نوێ بکەرەوە.</div>');
+  }
+}
+
 function renderAIContentCard(item,admin){
   let media="";
-  if(item.type==="video"&&item.file_url) media='<video class="ai-content-media" controls preload="metadata" src="'+escapeHTML(item.file_url)+'"></video>';
-  if(item.type==="image"&&item.file_url) media='<img class="ai-content-media" loading="lazy" src="'+escapeHTML(item.file_url)+'" alt="'+escapeHTML(item.title||"")+'">';
+  const mediaUrl=item.signed_url||((item.type==="video"||item.type==="image")?item.file_url:null);
+  if(item.type==="video"&&mediaUrl) media='<video class="ai-content-media" controls preload="metadata" playsinline src="'+escapeHTML(mediaUrl)+'" onerror="refreshAIVideoUrl(this,\''+escapeHTML(item.storage_path||'')+'\')"></video>';
+  if(item.type==="image"&&mediaUrl) media='<img class="ai-content-media" loading="lazy" src="'+escapeHTML(mediaUrl)+'" alt="'+escapeHTML(item.title||"")+'">';
   const link=(item.type==="text"&&item.file_url)?'<a class="download-link" href="'+escapeHTML(item.file_url)+'" target="_blank" rel="noopener noreferrer">⬇️ داگرتنی ئەپ / کردنەوەی لینک</a>':"";
   let del=admin ? '<button class="content-delete" onclick="deleteAIContent(\''+escapeHTML(item.id)+'\')">🗑️ سڕینەوە</button>' : "";
   return '<article class="ai-content-card">'+media+'<div class="content-body"><small style="color:#2563eb;font-weight:800">'+categoryLabel(item.category)+'</small><h3>'+escapeHTML(item.title||"ناونیشان")+'</h3><p>'+escapeHTML(item.description||"")+'</p>'+link+del+'</div></article>';
@@ -729,6 +763,7 @@ async function loadAdminAIContent(){
   const {data,error}=await supabaseClient.from("ai_content").select("*").order("created_at",{ascending:false});
   if(error){box.innerHTML='<div class="error-box">❌ '+escapeHTML(error.message)+'</div>';return;}
   if(!data||data.length===0){box.innerHTML='<div class="ai-content-empty">📭 هێشتا هیچ ناوەڕۆکێک زیاد نەکراوە.</div>';return;}
+  await signAIContentUrls(data,86400);
   box.innerHTML='<h4 style="margin:15px 0">📚 ناوەڕۆکە زیادکراوەکان</h4><div class="ai-content-grid">'+data.map(x=>renderAIContentCard(x,true)).join('')+'</div>';
 }
 
@@ -843,9 +878,9 @@ async function addAIContent(){
         if(upErr)throw upErr;
         setUploadProgress(100,"✅ وێنە نێردرا");
       }
-      const {data:urlData}=supabaseClient.storage.from("ai-content").getPublicUrl(storagePath);
-      fileUrl=urlData?.publicUrl||null;
-      if(!fileUrl)throw new Error("لینکی فایل دروست نەبوو.");
+      // Bucket ـەکە Private ـە؛ بۆ ڤیدیۆ/وێنە public URL بەکارناهێنین.
+      // storage_path لە DB هەڵدەگیرێت و کاتێک Premium ناوەڕۆک دەبینێت Signed URL دروست دەکرێت.
+      fileUrl=null;
     }
     const {error}=await supabaseClient.from("ai_content").insert({title,description,type,category,file_url:fileUrl,storage_path:storagePath,published:true,created_by:currentUser.id});
     if(error)throw error;
