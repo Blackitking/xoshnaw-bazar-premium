@@ -106,6 +106,7 @@ header{flex-direction:column}
 .ai-content-media{width:100%;display:block;max-height:420px;object-fit:cover;background:#111}
 .ai-content-empty{padding:22px;text-align:center;background:#f8fafc;border-radius:16px;color:#667085}
 .content-delete{margin-top:12px;background:#dc2626;color:#fff;padding:10px 14px;border-radius:10px;font-weight:700}
+.download-link{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin-top:12px;background:#16a34a;color:#fff!important;padding:11px 18px;border-radius:12px;font-weight:800;text-decoration:none;width:100%;box-sizing:border-box}
 @media(max-width:700px){.ai-admin-grid,.ai-content-grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -229,10 +230,11 @@ header{flex-direction:column}
 <div class="ai-admin-grid">
 <div class="form-group"><label>بەشی ناوەڕۆک</label><select id="contentCategory" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px"><option value="AI TOOL">🤖 AI TOOL</option><option value="APPS MODS AND HACK">📱 APPS MODS AND HACK</option><option value="FILM AND DRAMA">🎬 FILM AND DRAMA</option></select></div>
 <div class="form-group"><label>ناونیشانی ناوەڕۆک</label><input id="contentTitle" type="text" placeholder="بۆ نموونە: ڤیدیۆی فێرکاری ١"></div>
-<div class="form-group"><label>جۆری ناوەڕۆک</label><select id="contentType" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px"><option value="video">🎬 ڤیدیۆ</option><option value="image">🖼️ وێنە</option><option value="text">📝 دەق</option></select></div>
+<div class="form-group"><label>جۆری ناوەڕۆک</label><select id="contentType" onchange="toggleContentInput()" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px"><option value="video">🎬 ڤیدیۆ</option><option value="image">🖼️ وێنە</option><option value="text">📝 دەق</option><option value="link">🔗 لینکی Download</option></select></div>
 </div>
 <div class="form-group"><label>دەق / کورتە باس</label><textarea id="contentDescription" placeholder="کورتەی ناوەڕۆک..."></textarea></div>
-<div class="form-group"><label>فایل (بۆ ڤیدیۆ یان وێنە)</label><input id="contentFile" type="file" accept="video/*,image/*"></div>
+<div class="form-group" id="fileInputGroup"><label>فایل (بۆ ڤیدیۆ یان وێنە)</label><input id="contentFile" type="file" accept="video/*,image/*"></div>
+<div class="form-group" id="linkInputGroup" style="display:none"><label>🔗 لینکی Download</label><input id="contentLink" type="url" inputmode="url" placeholder="https://example.com/app.apk"></div>
 <button class="submit-btn" onclick="addAIContent()">➕ زیادکردنی ناوەڕۆک</button>
 <div id="contentAdminMessage" class="error-box" style="margin-top:10px"></div>
 </div>
@@ -705,8 +707,9 @@ function renderAIContentCard(item,admin){
   let media="";
   if(item.type==="video"&&item.file_url) media='<video class="ai-content-media" controls preload="metadata" src="'+escapeHTML(item.file_url)+'"></video>';
   if(item.type==="image"&&item.file_url) media='<img class="ai-content-media" loading="lazy" src="'+escapeHTML(item.file_url)+'" alt="'+escapeHTML(item.title||"")+'">';
+  const link=(item.type==="text"&&item.file_url)?'<a class="download-link" href="'+escapeHTML(item.file_url)+'" target="_blank" rel="noopener noreferrer">⬇️ داگرتنی ئەپ / کردنەوەی لینک</a>':"";
   let del=admin ? '<button class="content-delete" onclick="deleteAIContent(\''+escapeHTML(item.id)+'\')">🗑️ سڕینەوە</button>' : "";
-  return '<article class="ai-content-card">'+media+'<div class="content-body"><small style="color:#2563eb;font-weight:800">'+categoryLabel(item.category)+'</small><h3>'+escapeHTML(item.title||"ناونیشان")+'</h3><p>'+escapeHTML(item.description||"")+'</p>'+del+'</div></article>';
+  return '<article class="ai-content-card">'+media+'<div class="content-body"><small style="color:#2563eb;font-weight:800">'+categoryLabel(item.category)+'</small><h3>'+escapeHTML(item.title||"ناونیشان")+'</h3><p>'+escapeHTML(item.description||"")+'</p>'+link+del+'</div></article>';
 }
 
 async function loadAdminAIContent(){
@@ -719,18 +722,31 @@ async function loadAdminAIContent(){
   box.innerHTML='<h4 style="margin:15px 0">📚 ناوەڕۆکە زیادکراوەکان</h4><div class="ai-content-grid">'+data.map(x=>renderAIContentCard(x,true)).join('')+'</div>';
 }
 
+function toggleContentInput(){
+  const type=document.getElementById("contentType").value;
+  const fileGroup=document.getElementById("fileInputGroup");
+  const linkGroup=document.getElementById("linkInputGroup");
+  if(fileGroup)fileGroup.style.display=(type==="video"||type==="image")?"block":"none";
+  if(linkGroup)linkGroup.style.display=type==="link"?"block":"none";
+}
+
 async function addAIContent(){
   if(!isAdmin()){alert("❌ تەنها ئەدمین دەتوانێت ناوەڕۆک زیاد بکات.");return;}
   const title=document.getElementById("contentTitle").value.trim();
   const category=document.getElementById("contentCategory").value;
-  const type=document.getElementById("contentType").value;
+  const selectedType=document.getElementById("contentType").value;
+  const type=selectedType==="link"?"text":selectedType;
   const description=document.getElementById("contentDescription").value.trim();
   const fileInput=document.getElementById("contentFile");
   const msg=document.getElementById("contentAdminMessage");
   showError("contentAdminMessage","");
   if(!title){showError("contentAdminMessage","❌ تکایە ناونیشان بنووسە.");return;}
   let fileUrl=null, storagePath=null;
-  if(type!=="text"){
+  if(selectedType==="link"){
+    const link=document.getElementById("contentLink").value.trim();
+    if(!/^https?:\/\/\S+$/i.test(link)){showError("contentAdminMessage","❌ تکایە لینکێکی دروست بنووسە، بۆ نموونە https://example.com/app.apk");return;}
+    fileUrl=link;
+  } else if(type!=="text"){
     const file=fileInput.files[0];
     if(!file){showError("contentAdminMessage","❌ تکایە فایل هەڵبژێرە.");return;}
     const max=type==="video"?100*1024*1024:10*1024*1024;
