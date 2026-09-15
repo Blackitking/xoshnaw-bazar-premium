@@ -8,6 +8,7 @@
 <title>XOSHNAW AI PREMIUM</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/tus-js-client@4/dist/tus.min.js"></script>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -233,7 +234,7 @@ header{flex-direction:column}
 <div class="form-group"><label>جۆری ناوەڕۆک</label><select id="contentType" onchange="toggleContentInput()" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px"><option value="video">🎬 ڤیدیۆ</option><option value="image">🖼️ وێنە</option><option value="text">📝 دەق</option><option value="link">🔗 لینکی Download</option></select></div>
 </div>
 <div class="form-group"><label>دەق / کورتە باس</label><textarea id="contentDescription" placeholder="کورتەی ناوەڕۆک..."></textarea></div>
-<div class="form-group" id="fileInputGroup"><label>فایل (بۆ ڤیدیۆ یان وێنە)</label><input id="contentFile" type="file" accept="video/*,image/*"></div>
+<div class="form-group" id="fileInputGroup"><label>فایل (بۆ ڤیدیۆ یان وێنە)</label><input id="contentFile" type="file" accept="video/*,image/*" onchange="showSelectedFileInfo()"><div id="uploadInfo" style="margin-top:10px;font-size:13px;color:#475467"></div><div id="uploadProgressWrap" style="display:none;margin-top:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;height:12px"><div id="uploadProgressBar" style="width:0%;height:100%;background:#2563eb;transition:width .2s"></div></div><div id="uploadProgressText" style="display:none;margin-top:6px;font-size:13px;font-weight:800;color:#2563eb"></div></div>
 <div class="form-group" id="linkInputGroup" style="display:none"><label>🔗 لینکی Download</label><input id="contentLink" type="url" inputmode="url" placeholder="https://example.com/app.apk"></div>
 <button class="submit-btn" onclick="addAIContent()">➕ زیادکردنی ناوەڕۆک</button>
 <div id="contentAdminMessage" class="error-box" style="margin-top:10px"></div>
@@ -508,6 +509,9 @@ if(hasPremium()){
 content.style.display="block";
 locked.style.display="none";
 
+// ناوەڕۆکی Premium تەنها بۆ ئەندامی چالاک بار دەکرێت
+loadAIContent();
+
 if(expiry){
 if(currentProfile?.premium_expires_at){
 const d=new Date(currentProfile.premium_expires_at);
@@ -519,10 +523,11 @@ expiry.textContent="👑 Premium ـەکەت چالاکە.";
 }else{
 content.style.display="none";
 locked.style.display="block";
+// ئەگەر Premium چالاک نییە، هیچ ناوەڕۆکی تایبەت پیشان مەدە
+const area=document.getElementById("aiContentArea");
+if(area)area.innerHTML="";
 }
 }
-
-loadAIContent();
 
 function showError(id,message){
   const el=document.getElementById(id);
@@ -691,6 +696,11 @@ function categoryLabel(cat){
 async function loadAIContent(){
   const area=document.getElementById("aiContentArea");
   if(!area||!supabaseClient)return;
+  // تەنها ئەندامی Premium دەتوانێت ناوەڕۆکی زیادکراوی Admin ببینێت
+  if(!currentUser || !hasPremium()){
+    area.innerHTML="";
+    return;
+  }
   const {data,error}=await supabaseClient.from("ai_content").select("*").eq("published",true).order("created_at",{ascending:false});
   if(error){console.error(error);area.innerHTML="";return;}
   const groups={"AI TOOL":[],"APPS MODS AND HACK":[],"FILM AND DRAMA":[]};
@@ -730,6 +740,72 @@ function toggleContentInput(){
   if(linkGroup)linkGroup.style.display=type==="link"?"block":"none";
 }
 
+function showSelectedFileInfo(){
+  const input=document.getElementById("contentFile");
+  const info=document.getElementById("uploadInfo");
+  const file=input?.files?.[0];
+  if(!info)return;
+  if(!file){info.textContent="";return;}
+  const mb=(file.size/1024/1024).toFixed(1);
+  info.textContent=`📦 ${file.name} — ${mb} MB`;
+}
+
+function setUploadProgress(percent,text){
+  const wrap=document.getElementById("uploadProgressWrap");
+  const bar=document.getElementById("uploadProgressBar");
+  const label=document.getElementById("uploadProgressText");
+  if(wrap)wrap.style.display="block";
+  if(label)label.style.display="block";
+  if(bar)bar.style.width=Math.max(0,Math.min(100,percent))+"%";
+  if(label)label.textContent=text||(`${Math.round(percent)}%`);
+}
+
+function resetUploadProgress(){
+  const wrap=document.getElementById("uploadProgressWrap");
+  const label=document.getElementById("uploadProgressText");
+  const bar=document.getElementById("uploadProgressBar");
+  if(wrap)wrap.style.display="none";
+  if(label)label.style.display="none";
+  if(bar)bar.style.width="0%";
+}
+
+async function uploadVideoResumable(file,storagePath){
+  if(!window.tus) throw new Error("سیستەمی Upload ئامادە نییە. تکایە پەڕەکە نوێ بکەرەوە.");
+  const {data:{session},error:sessionError}=await supabaseClient.auth.getSession();
+  if(sessionError||!session?.access_token) throw new Error("Session ـی بەکارهێنەر بەردەست نییە. تکایە دووبارە بچۆ ژوورەوە.");
+  const projectId="wpjqvpcqaufrpstnziad";
+  const endpoint=`https://${projectId}.storage.supabase.co/storage/v1/upload/resumable`;
+  return new Promise((resolve,reject)=>{
+    let settled=false;
+    const finishError=(err)=>{if(settled)return;settled=true;reject(err instanceof Error?err:new Error(String(err||"Upload failed")));};
+    const upload=new tus.Upload(file,{
+      endpoint,
+      retryDelays:[0,3000,5000,10000,20000],
+      headers:{authorization:`Bearer ${session.access_token}`,'x-upsert':'false'},
+      metadata:{bucketName:"ai-content",objectName:storagePath,contentType:file.type,cacheControl:"31536000"},
+      chunkSize:6*1024*1024,
+      uploadDataDuringCreation:true,
+      removeFingerprintOnSuccess:true,
+      onError:error=>finishError(error),
+      onProgress:(uploaded,total)=>{
+        const pct=total?uploaded/total*100:0;
+        const done=(uploaded/1024/1024).toFixed(1);
+        const all=(total/1024/1024).toFixed(1);
+        setUploadProgress(pct,`⬆️ ${pct.toFixed(0)}% — ${done} / ${all} MB`);
+      },
+      onSuccess:()=>{
+        if(settled)return;
+        settled=true;
+        resolve(upload.url);
+      }
+    });
+    upload.findPreviousUploads().then(previous=>{
+      if(previous&&previous.length)upload.resumeFromPreviousUpload(previous[0]);
+      upload.start();
+    }).catch(finishError);
+  });
+}
+
 async function addAIContent(){
   if(!isAdmin()){alert("❌ تەنها ئەدمین دەتوانێت ناوەڕۆک زیاد بکات.");return;}
   const title=document.getElementById("contentTitle").value.trim();
@@ -739,34 +815,57 @@ async function addAIContent(){
   const description=document.getElementById("contentDescription").value.trim();
   const fileInput=document.getElementById("contentFile");
   const msg=document.getElementById("contentAdminMessage");
+  const button=document.querySelector('.ai-admin-tools .submit-btn');
   showError("contentAdminMessage","");
+  resetUploadProgress();
   if(!title){showError("contentAdminMessage","❌ تکایە ناونیشان بنووسە.");return;}
-  let fileUrl=null, storagePath=null;
-  if(selectedType==="link"){
-    const link=document.getElementById("contentLink").value.trim();
-    if(!/^https?:\/\/\S+$/i.test(link)){showError("contentAdminMessage","❌ تکایە لینکێکی دروست بنووسە، بۆ نموونە https://example.com/app.apk");return;}
-    fileUrl=link;
-  } else if(type!=="text"){
-    const file=fileInput.files[0];
-    if(!file){showError("contentAdminMessage","❌ تکایە فایل هەڵبژێرە.");return;}
-    const max=type==="video"?100*1024*1024:10*1024*1024;
-    if(file.size>max){showError("contentAdminMessage",type==="video"?"❌ ڤیدیۆ نابێت لە 100MB زیاتر بێت.":"❌ وێنە نابێت لە 10MB زیاتر بێت.");return;}
-    if(!file.type.startsWith(type+"/")){showError("contentAdminMessage","❌ جۆری فایل لەگەڵ جۆری ناوەڕۆک ناگونجێت.");return;}
-    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
-    storagePath=category.replace(/[^A-Z0-9]+/gi,"_")+"/"+Date.now()+"_"+Math.random().toString(36).slice(2)+"_"+safeName;
-    const {error:upErr}=await supabaseClient.storage.from("ai-content").upload(storagePath,file,{upsert:false,contentType:file.type});
-    if(upErr){showError("contentAdminMessage","❌ ناردنی فایل سەرکەوتوو نەبوو: "+upErr.message+"\n\nپشکنین: Storage bucket ـی ai-content و Policy ـەکانی Upload.");return;}
-    const {data:urlData}=supabaseClient.storage.from("ai-content").getPublicUrl(storagePath);
-    fileUrl=urlData?.publicUrl||null;
-    if(!fileUrl){await supabaseClient.storage.from("ai-content").remove([storagePath]);showError("contentAdminMessage","❌ لینکی فایل دروست نەبوو.");return;}
+  let fileUrl=null,storagePath=null;
+  try{
+    if(selectedType==="link"){
+      const link=document.getElementById("contentLink").value.trim();
+      if(!/^https?:\/\/\S+$/i.test(link)){showError("contentAdminMessage","❌ تکایە لینکێکی دروست بنووسە.");return;}
+      fileUrl=link;
+    }else if(type!=="text"){
+      const file=fileInput.files[0];
+      if(!file){showError("contentAdminMessage","❌ تکایە فایل هەڵبژێرە.");return;}
+      const max=type==="video"?500*1024*1024:15*1024*1024;
+      if(file.size>max){showError("contentAdminMessage",type==="video"?"❌ ڤیدیۆکە لە 500MB زیاترە.":"❌ وێنەکە لە 15MB زیاترە.");return;}
+      if(!file.type.startsWith(type+"/")){showError("contentAdminMessage","❌ جۆری فایل لەگەڵ جۆری ناوەڕۆک ناگونجێت.");return;}
+      const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      storagePath=category.replace(/[^A-Z0-9]+/gi,"_")+"/"+Date.now()+"_"+Math.random().toString(36).slice(2)+"_"+safeName;
+      if(button){button.disabled=true;button.textContent="⏳ ناردن...";}
+      if(type==="video"){
+        setUploadProgress(0,"⬆️ ئامادەکردنی Upload...");
+        await uploadVideoResumable(file,storagePath);
+      }else{
+        setUploadProgress(0,"⬆️ ناردنی وێنە...");
+        const {error:upErr}=await supabaseClient.storage.from("ai-content").upload(storagePath,file,{upsert:false,contentType:file.type,cacheControl:"31536000"});
+        if(upErr)throw upErr;
+        setUploadProgress(100,"✅ وێنە نێردرا");
+      }
+      const {data:urlData}=supabaseClient.storage.from("ai-content").getPublicUrl(storagePath);
+      fileUrl=urlData?.publicUrl||null;
+      if(!fileUrl)throw new Error("لینکی فایل دروست نەبوو.");
+    }
+    const {error}=await supabaseClient.from("ai_content").insert({title,description,type,category,file_url:fileUrl,storage_path:storagePath,published:true,created_by:currentUser.id});
+    if(error)throw error;
+    document.getElementById("contentTitle").value="";
+    document.getElementById("contentDescription").value="";
+    document.getElementById("contentFile").value="";
+    document.getElementById("contentLink").value="";
+    document.getElementById("uploadInfo").textContent="";
+    setUploadProgress(100,"✅ ناوەڕۆک بە سەرکەوتوویی زیاد کرا");
+    alert("✅ ناوەڕۆکەکە لە بەشی "+category+" زیاد کرا.");
+    await loadAdminAIContent();
+    await loadAIContent();
+    setTimeout(resetUploadProgress,1200);
+  }catch(error){
+    if(storagePath){try{await supabaseClient.storage.from("ai-content").remove([storagePath]);}catch(e){}}
+    showError("contentAdminMessage","❌ Upload سەرکەوتوو نەبوو: "+(error?.message||error)+"\n\nئەگەر ڤیدیۆکە گەورەیە، ئەم سیستەمە TUS بە 6MB chunk بەکاردێنێت و دەتوانێت Upload لە شوێنی پچڕانەوە بەردەوام بکات.");
+    resetUploadProgress();
+  }finally{
+    if(button){button.disabled=false;button.textContent="➕ زیادکردنی ناوەڕۆک";}
   }
-  const {error}=await supabaseClient.from("ai_content").insert({title,description,type,category,file_url:fileUrl,storage_path:storagePath,published:true,created_by:currentUser.id});
-  if(error){if(storagePath)await supabaseClient.storage.from("ai-content").remove([storagePath]);showError("contentAdminMessage","❌ تۆمارکردنی ناوەڕۆک سەرکەوتوو نەبوو: "+error.message+"\n\nئەگەر هەڵەکەی category ـە، SQL ـی خوارەوە جێبەجێ بکە.");return;}
-  document.getElementById("contentTitle").value="";document.getElementById("contentDescription").value="";document.getElementById("contentFile").value="";
-  showError("contentAdminMessage","");
-  alert("✅ ناوەڕۆکەکە لە بەشی "+category+" زیاد کرا.");
-  await loadAdminAIContent();
-  await loadAIContent();
 }
 
 async function deleteAIContent(id){
