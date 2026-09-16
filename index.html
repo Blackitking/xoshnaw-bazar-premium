@@ -7,6 +7,7 @@
 
 <title>XOSHNAW AI PREMIUM</title>
 
+<!-- Supabase SQL migration required once: ALTER TABLE public.ai_content ADD COLUMN IF NOT EXISTS app_name text; -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/tus-js-client@4/dist/tus.min.js"></script>
 
@@ -230,7 +231,7 @@ header{flex-direction:column}
 <p style="line-height:1.8;margin-bottom:14px">تەنها ئەدمین دەتوانێت ڤیدیۆ، وێنە یان دەق زیاد بکات. بەشێک کە بەتاڵە لای ئەندام نیشان نادرێت.</p>
 <div class="ai-admin-grid">
 <div class="form-group"><label>بەشی ناوەڕۆک</label><select id="contentCategory" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px"><option value="AI TOOL">🤖 AI TOOL</option><option value="APPS MODS AND HACK">📱 APPS MODS AND HACK</option><option value="FILM AND DRAMA">🎬 FILM AND DRAMA</option></select></div>
-<div class="form-group"><label>ناونیشانی ناوەڕۆک</label><input id="contentTitle" type="text" placeholder="بۆ نموونە: ڤیدیۆی فێرکاری ١"></div>
+<div class="form-group"><label>ناوی بەرنامە</label><input id="contentAppName" type="text" placeholder="Snapchat" required></div>\n<div class="form-group"><label>ناونیشانی ناوەڕۆک</label><input id="contentTitle" type="text" placeholder="بۆ نموونە: ڤیدیۆی فێرکاری ١"></div>
 <div class="form-group"><label>جۆری ناوەڕۆک</label><select id="contentType" onchange="toggleContentInput()" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px"><option value="video">🎬 ڤیدیۆ</option><option value="image">🖼️ وێنە</option><option value="text">📝 دەق</option><option value="link">📱 ئەپ + لینکی Download</option></select></div>
 </div>
 <div class="form-group"><label>دەق / کورتە باس</label><textarea id="contentDescription" placeholder="کورتەی ناوەڕۆک..."></textarea></div>
@@ -753,7 +754,7 @@ function renderAIContentCard(item,admin){
   if(item.type==="image"&&mediaUrl) media='<img class="ai-content-media" loading="lazy" src="'+escapeHTML(mediaUrl)+'" alt="'+escapeHTML(item.title||"")+'">';
   const link=(item.type==="text"&&item.file_url)?'<div style="margin-top:10px"><strong>📱 '+escapeHTML(item.app_name||item.title||"ئەپ")+'</strong><br><a class="download-link" href="'+escapeHTML(item.file_url)+'" target="_blank" rel="noopener noreferrer">⬇️ دابەزاندنی ئەپ</a></div>':"";
   let del=admin ? '<button class="content-delete" onclick="deleteAIContent(\''+escapeHTML(item.id)+'\')">🗑️ سڕینەوە</button>' : "";
-  return '<article class="ai-content-card">'+media+'<div class="content-body"><small style="color:#2563eb;font-weight:800">'+categoryLabel(item.category)+'</small><h3>'+escapeHTML(item.title||"ناونیشان")+'</h3><p>'+escapeHTML(item.description||"")+'</p>'+link+del+'</div></article>';
+  return '<article class="ai-content-card">'+media+'<div class="content-body"><small style="color:#2563eb;font-weight:800">'+categoryLabel(item.category)+'</small><h3>'+escapeHTML(item.app_name||item.title||"بەرنامە")+'</h3><p>'+escapeHTML(item.description||"")+'</p>'+link+del+'</div></article>';
 }
 
 async function loadAdminAIContent(){
